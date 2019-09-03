@@ -3,10 +3,10 @@ from chainer import cuda
 
 import chainer.functions as F
 import chainer.links as L
-from functions.disable_shearing import disable_shearing
-from functions.disable_translation import disable_translation
-from functions.rotation_droput import rotation_dropout
-from insights.visual_backprop import VisualBackprop
+from see.chainer.functions.disable_shearing import disable_shearing
+from see.chainer.functions.disable_translation import disable_translation
+from see.chainer.functions.rotation_droput import rotation_dropout
+from see.chainer.insights.visual_backprop import VisualBackprop
 
 
 class ResnetBlock(Chain):

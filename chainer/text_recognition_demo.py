@@ -1,5 +1,6 @@
 import argparse
 import importlib
+import sys
 
 import os
 
@@ -15,7 +16,7 @@ import numpy as np
 from PIL import Image
 from chainer import configuration
 
-from utils.datatypes import Size
+from see.chainer.utils.datatypes import Size
 
 
 def get_class_and_module(log_data):
@@ -71,6 +72,7 @@ def create_network(args, log_data):
     recognition_net_class_name, recognition_module_name = get_class_and_module(log_data['recognition_net'])
     module = load_module(os.path.abspath(os.path.join(args.model_dir, recognition_module_name)))
     recognition_net_class = eval('module.{}'.format(recognition_net_class_name))
+    target_shape = Size._make(log_data['target_size'])
     recognition_net = build_recognition_net(recognition_net_class, target_shape, args)
 
     fusion_net_class_name, fusion_module_name = get_class_and_module(log_data['fusion_net'])
@@ -125,6 +127,40 @@ def extract_bbox(bbox, image_size, target_shape, xp):
     return top_left, bottom_right
 
 
+def process(image, network, char_map, xp, args):
+    with configuration.using_config('train', False):
+        predictions, crops, grids = network(image[xp.newaxis, ...])
+
+    # extract class scores for each word
+    words = OrderedDict({})
+
+    predictions = F.concat([F.expand_dims(prediction, axis=0) for prediction in predictions],
+                           axis=0)
+
+    classification = F.softmax(predictions, axis=2)
+    classification = classification.data
+    classification = xp.argmax(classification, axis=2)
+    classification = xp.transpose(classification, (1, 0))
+
+    words = strip_prediction(classification, xp, args.blank_symbol)
+    words = " ".join(["".join(map(lambda x: chr(char_map[str(x)]), word)) for word in words])
+    return words
+
+    #
+    # bboxes = []
+    # for bbox in grids[0]:
+    #     bbox = extract_bbox(bbox, image_size, target_shape, xp)
+    #     bboxes.append(OrderedDict({
+    #         'top_left': bbox[0],
+    #         'bottom_right': bbox[1]
+    #     }))
+    # words[word] = bboxes
+    #
+    # pprint(words)
+    #
+    # return words
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Tool that loads model and predicts on a given image")
     parser.add_argument("model_dir", help="path to directory where model is saved")
@@ -162,35 +198,16 @@ if __name__ == "__main__":
         char_map = json.load(the_map)
 
     # load image
-    image = load_image(args.image_path, xp, image_size)
-    with configuration.using_config('train', False):
-        predictions, crops, grids = network(image[xp.newaxis, ...])
-
-    # extract class scores for each word
-    words = OrderedDict({})
-
-    predictions = F.concat([F.expand_dims(prediction, axis=0) for prediction in predictions], axis=0)
-
-    classification = F.softmax(predictions, axis=2)
-    classification = classification.data
-    classification = xp.argmax(classification, axis=2)
-    classification = xp.transpose(classification, (1, 0))
-
-    word = strip_prediction(classification, xp, args.blank_symbol)[0]
-
-    word = "".join(map(lambda x: chr(char_map[str(x)]), word))
-
-    bboxes = []
-    for bbox in grids[0]:
-        bbox = extract_bbox(bbox, image_size, target_shape, xp)
-        bboxes.append(OrderedDict({
-            'top_left': bbox[0],
-            'bottom_right': bbox[1]
-        }))
-    words[word] = bboxes
-
-    pprint(words)
-
-
-
-
+    if args.image_path != "-":
+        image = load_image(args.image_path, xp, image_size)
+        word = process(image)
+        print("'{}': '{}',".format(os.path.abspath(args.image_path),
+                                   ''.join([i for i in word if i.isalpha()])))
+    else:
+        print("Reading file paths from stdin.")
+        imgs = []
+        for line in sys.stdin:
+            path = os.path.abspath(line.strip())
+            image = load_image(path, xp, image_size)
+            word = process(image, network, char_map, xp, args)
+            print("'{}': '{}',".format(path, ''.join([i for i in word if i.isalpha()])))
