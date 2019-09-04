@@ -1,6 +1,5 @@
 bleach==1.5.0
 chainer==3.2.0
-cupy==2.2.0
 cycler==0.10.0
 enum34==1.1.6
 fastrlock==0.3
