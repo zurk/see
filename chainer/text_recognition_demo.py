@@ -88,12 +88,18 @@ def create_network(args, log_data):
 
 def load_image(image_file, xp, image_size):
     with Image.open(image_file) as the_image:
-        the_image = the_image.convert('L')
-        the_image = the_image.resize((image_size.width, image_size.height), Image.LANCZOS)
-        image = xp.asarray(the_image, dtype=np.float32)
-        image /= 255
-        image = xp.broadcast_to(image, (3, image_size.height, image_size.width))
-        return image
+        return preprocess_image(the_image, xp, image_size)
+
+
+def preprocess_image(the_image, xp, image_size):
+    if isinstance(the_image, np.ndarray):
+        the_image = Image.fromarray(the_image)
+    the_image = the_image.convert('L')
+    the_image = the_image.resize((image_size.width, image_size.height), Image.LANCZOS)
+    image = xp.asarray(the_image, dtype=np.float32)
+    image /= 255
+    image = xp.broadcast_to(image, (3, image_size.height, image_size.width))
+    return image
 
 
 def strip_prediction(predictions, xp, blank_symbol):
@@ -163,10 +169,10 @@ def process(image, network, char_map, xp, args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Tool that loads model and predicts on a given image")
-    parser.add_argument("model_dir", help="path to directory where model is saved")
-    parser.add_argument("snapshot_name", help="name of the snapshot to load")
+    parser.add_argument("--text_recognition_model_dir", help="path to directory where model is saved")
+    parser.add_argument("--text_recognition_snapshot_name", help="name of the snapshot to load")
     parser.add_argument("image_path", help="path to the image that shall be evaluated")
-    parser.add_argument("char_map", help="path to char map, that maps class id to character")
+    parser.add_argument("--text_recognition_char_map", help="path to char map, that maps class id to character")
     parser.add_argument("--gpu", type=int, default=-1, help="id of gpu to use [default: use cpu]")
 
     args = parser.parse_args()
@@ -200,7 +206,7 @@ if __name__ == "__main__":
     # load image
     if args.image_path != "-":
         image = load_image(args.image_path, xp, image_size)
-        word = process(image)
+        word = process(image, network, char_map, xp, args)
         print("'{}': '{}',".format(os.path.abspath(args.image_path),
                                    ''.join([i for i in word if i.isalpha()])))
     else:
